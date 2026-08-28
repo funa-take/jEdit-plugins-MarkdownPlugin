@@ -1,0 +1,8 @@
+○2026/08/28
+  MarkdownPluginをfork。pegdown/parboiledからflexmark-java 0.64.8に移行
+  （fenced code blockに対応、実行時バイトコード生成を行うparboiled依存を解消）
+  ブラウザプレビューに表の罫線CSSを追加（オプション画面で編集可能）
+  mermaidブロック(```mermaid)をプレビューで図として描画できるように対応
+  （mermaid.min.jsをローカル同梱）
+  依存する19個のjarをMarkdownPlugin.jar 1つに同梱
+  JDK11でビルドできるよう対応
