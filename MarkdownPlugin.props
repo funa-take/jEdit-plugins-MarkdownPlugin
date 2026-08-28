@@ -6,7 +6,6 @@ plugin.ua.pico.jedit.markdown.MarkdownPlugin.author=Vitaliy Berdinskikh UR6LAD
 # Properties
 plugin.ua.pico.jedit.markdown.MarkdownPlugin.activate=defer
 plugin.ua.pico.jedit.markdown.MarkdownPlugin.usePluginHome=false
-plugin.ua.pico.jedit.markdown.MarkdownPlugin.jars=flexmark-0.64.8.jar flexmark-util-ast-0.64.8.jar flexmark-util-builder-0.64.8.jar flexmark-util-collection-0.64.8.jar flexmark-util-data-0.64.8.jar flexmark-util-dependency-0.64.8.jar flexmark-util-format-0.64.8.jar flexmark-util-html-0.64.8.jar flexmark-util-misc-0.64.8.jar flexmark-util-options-0.64.8.jar flexmark-util-sequence-0.64.8.jar flexmark-util-visitor-0.64.8.jar flexmark-util-0.64.8.jar flexmark-ext-tables-0.64.8.jar flexmark-ext-typographic-0.64.8.jar flexmark-ext-abbreviation-0.64.8.jar flexmark-ext-autolink-0.64.8.jar annotations-24.0.1.jar autolink-0.11.0.jar
 plugin.ua.pico.jedit.markdown.MarkdownPlugin.description=Render Markdown text to HTML or preview it in browser
 # TODO: docs longdescription
 plugin.ua.pico.jedit.markdown.MarkdownPlugin.longdescription=description.html
