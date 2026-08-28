@@ -13,7 +13,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
-import java.text.MessageFormat;
 import javax.swing.JOptionPane;
 
 import infoviewer.InfoViewerPlugin;
@@ -136,10 +135,10 @@ public class MarkdownPlugin extends EditPlugin {
 	}
 
 	private void showPreview(final View view, final Buffer buffer, final String text) {
-		final String html_prologue = "<DOCTYPE html><html><head><meta charset=\"{0}\"/><title>{1}</title></head><body>";
 		final String html_epilogue = "</body></html>";
 		final InfoViewerPlugin browser = (InfoViewerPlugin) jEdit.getPlugin("infoviewer.InfoViewerPlugin");
 		final String charset = buffer.getStringProperty(buffer.ENCODING);
+		final String css = jEdit.getProperty(OPTION_PREFIX + "preview.css", "");
 		String name;
 		File html = null;
 		Writer writer;
@@ -163,7 +162,11 @@ public class MarkdownPlugin extends EditPlugin {
 		try {
 			html = File.createTempFile(name, "." + MODE, new File(buffer.getDirectory()));
 			writer = new OutputStreamWriter(new FileOutputStream(html), charset);
-			builder.append(MessageFormat.format(html_prologue, charset, name));
+			builder.append("<!DOCTYPE html><html><head><meta charset=\"").append(charset).append("\"/><title>").append(name).append("</title>");
+			if (0 != css.length()) {
+				builder.append("<style>").append(css).append("</style>");
+			}
+			builder.append("</head><body>");
 			builder.append(text).append(html_epilogue);
 			writer.write(builder.toString());
 			writer.close();

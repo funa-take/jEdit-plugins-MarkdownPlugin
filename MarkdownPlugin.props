@@ -46,6 +46,8 @@ options.markdown.tables.label=Enables support for tables similar to MultiMarkdow
 options.markdown.noBlocks.label=Suppresses HTML blocks.
 options.markdown.noInline.label=Suppresses inline HTML tags.
 options.markdown.noHypertext.label=Suppresses HTML blocks as well as inline HTML tags.
+options.markdown.preview.css.label=CSS applied to the browser preview (e.g. table borders):
+options.markdown.preview.css.reset.label=Reset to Default
 # Options' values
 options.markdown.target=Buffer
 options.markdown.abbreviations=false
@@ -60,5 +62,6 @@ options.markdown.noInline=false
 options.markdown.noHypertext=false
 options.markdown.all=true
 options.markdown.none=false
+options.markdown.preview.css=table { border-collapse: collapse; margin: 0.5em 0; } th, td { border: 1px solid #888888; padding: 4px 8px; } th { background-color: #eeeeee; }
 
 

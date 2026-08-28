@@ -5,16 +5,23 @@ import org.gjt.sp.jedit.jEdit;
 import org.gjt.sp.util.Log;
 
 import javax.swing.ButtonGroup;
+import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JRadioButton;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-public class MarkdownOptionPane extends AbstractOptionPane implements ChangeListener {
+public class MarkdownOptionPane extends AbstractOptionPane implements ChangeListener, ActionListener {
+
+	static final String PREVIEW_CSS = "preview.css";
 
 	public MarkdownOptionPane() {
 		super(MarkdownPlugin.NAME);
@@ -56,6 +63,15 @@ public class MarkdownOptionPane extends AbstractOptionPane implements ChangeList
 			addComponent(extensions[i]);
 		}
 		chooseButton.addChangeListener(this);
+		// Preview CSS
+		addSeparator("options.markdown.preview.css.label");
+		cssArea = new JTextArea(6, 40);
+		cssArea.setLineWrap(true);
+		cssArea.setWrapStyleWord(true);
+		addComponent(new JScrollPane(cssArea));
+		resetCssButton = new JButton(jEdit.getProperty("options.markdown.preview.css.reset.label"));
+		resetCssButton.addActionListener(this);
+		addComponent(resetCssButton);
 	}
 
 	public void stateChanged(final ChangeEvent event) {
@@ -69,6 +85,13 @@ public class MarkdownOptionPane extends AbstractOptionPane implements ChangeList
 					extension.setEnabled(false);
 				}
 			}
+		}
+	}
+
+	public void actionPerformed(final ActionEvent event) {
+		if (resetCssButton == event.getSource()) {
+			jEdit.resetProperty(MarkdownPlugin.OPTION_PREFIX + PREVIEW_CSS);
+			cssArea.setText(jEdit.getProperty(MarkdownPlugin.OPTION_PREFIX + PREVIEW_CSS, ""));
 		}
 	}
 
@@ -101,6 +124,7 @@ public class MarkdownOptionPane extends AbstractOptionPane implements ChangeList
 				}
 			}
 		}
+		cssArea.setText(jEdit.getProperty(MarkdownPlugin.OPTION_PREFIX + PREVIEW_CSS, ""));
 	}
 
 	@Override
@@ -124,6 +148,7 @@ public class MarkdownOptionPane extends AbstractOptionPane implements ChangeList
 			}
 		}
 		markdownUtil.setExtensions(usedExtensions);
+		jEdit.setProperty(MarkdownPlugin.OPTION_PREFIX + PREVIEW_CSS, cssArea.getText());
 	}
 
 	private MarkdownUtil markdownUtil;
@@ -134,5 +159,7 @@ public class MarkdownOptionPane extends AbstractOptionPane implements ChangeList
 	private JRadioButton allButton;
 	private JRadioButton chooseButton;
 	private JCheckBox extensions[];
+	private JTextArea cssArea;
+	private JButton resetCssButton;
 
 }
