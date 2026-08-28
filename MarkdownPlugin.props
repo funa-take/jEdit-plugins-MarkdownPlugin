@@ -5,7 +5,7 @@ plugin.ua.pico.jedit.markdown.MarkdownPlugin.author=Vitaliy Berdinskikh UR6LAD
 
 # Properties
 plugin.ua.pico.jedit.markdown.MarkdownPlugin.activate=defer
-plugin.ua.pico.jedit.markdown.MarkdownPlugin.usePluginHome=false
+plugin.ua.pico.jedit.markdown.MarkdownPlugin.usePluginHome=true
 plugin.ua.pico.jedit.markdown.MarkdownPlugin.description=Render Markdown text to HTML or preview it in browser
 # TODO: docs longdescription
 plugin.ua.pico.jedit.markdown.MarkdownPlugin.longdescription=description.html

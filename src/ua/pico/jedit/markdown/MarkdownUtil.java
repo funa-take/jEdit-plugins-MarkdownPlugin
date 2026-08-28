@@ -127,6 +127,7 @@ public class MarkdownUtil extends EditPlugin {
 		if (names.contains("quotes") || names.contains("smarts") || names.contains("smartypants")) {
 			flexmarkExtensions.add(TypographicExtension.create());
 		}
+		flexmarkExtensions.add(MermaidExtension.create());
 		options.set(Parser.EXTENSIONS, flexmarkExtensions);
 		if (names.contains("hardwraps")) {
 			options.set(HtmlRenderer.SOFT_BREAK, "<br />\n");

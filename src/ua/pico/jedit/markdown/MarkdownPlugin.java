@@ -11,8 +11,10 @@ import org.gjt.sp.util.Log;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.nio.file.Files;
 import javax.swing.JOptionPane;
 
 import infoviewer.InfoViewerPlugin;
@@ -22,8 +24,48 @@ public class MarkdownPlugin extends EditPlugin {
 	public static final String NAME = "markdown";
 	public static final String OPTION_PREFIX = "options.markdown.";
 
+	private static final String MERMAID_JS = "mermaid.min.js";
+
 	public MarkdownPlugin() {
 		super();
+	}
+
+	@Override
+	public void start() {
+		extractMermaidJs();
+	}
+
+	/**
+	 * Extracts the mermaid.min.js bundled in the plugin jar to the plugin
+	 * home, so the preview HTML can reference it as a local file (no
+	 * network access needed to render mermaid diagrams).
+	 */
+	private void extractMermaidJs() {
+		final File home = getPluginHome();
+
+		if (null == home) {
+			return;
+		}
+
+		final File mermaidJs = new File(home, MERMAID_JS);
+
+		if (mermaidJs.exists()) {
+			return;
+		}
+		if (!home.exists() && !home.mkdirs()) {
+			Log.log(Log.ERROR, MarkdownPlugin.class, "Cannot create plugin home: " + home);
+			return;
+		}
+		try (InputStream in = MarkdownPlugin.class.getResourceAsStream("/" + MERMAID_JS)) {
+			if (null == in) {
+				Log.log(Log.ERROR, MarkdownPlugin.class, MERMAID_JS + " not found in the plugin jar.");
+				return;
+			}
+			Files.copy(in, mermaidJs.toPath());
+			Log.log(Log.DEBUG, MarkdownPlugin.class, "Extracted " + MERMAID_JS + " to " + mermaidJs);
+		} catch (IOException ioex) {
+			Log.log(Log.ERROR, MarkdownPlugin.class, "Cannot extract " + MERMAID_JS + ": " + ioex.getMessage());
+		}
 	}
 
 	public void renderBuffer(final View view, final Buffer markdownBuffer) {
@@ -139,6 +181,8 @@ public class MarkdownPlugin extends EditPlugin {
 		final InfoViewerPlugin browser = (InfoViewerPlugin) jEdit.getPlugin("infoviewer.InfoViewerPlugin");
 		final String charset = buffer.getStringProperty(buffer.ENCODING);
 		final String css = jEdit.getProperty(OPTION_PREFIX + "preview.css", "");
+		final File pluginHome = getPluginHome();
+		final File mermaidJs = null == pluginHome ? null : new File(pluginHome, MERMAID_JS);
 		String name;
 		File html = null;
 		Writer writer;
@@ -165,6 +209,10 @@ public class MarkdownPlugin extends EditPlugin {
 			builder.append("<!DOCTYPE html><html><head><meta charset=\"").append(charset).append("\"/><title>").append(name).append("</title>");
 			if (0 != css.length()) {
 				builder.append("<style>").append(css).append("</style>");
+			}
+			if (null != mermaidJs && mermaidJs.exists()) {
+				builder.append("<script src=\"").append(mermaidJs.toURI().toURL().toString()).append("\"></script>");
+				builder.append("<script>mermaid.initialize({startOnLoad: true});</script>");
 			}
 			builder.append("</head><body>");
 			builder.append(text).append(html_epilogue);

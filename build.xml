@@ -27,7 +27,10 @@
 	</path>
 
 	<selector id="packageFiles">
-		<filename name="MarkdownPlugin.html" />
+		<or>
+			<filename name="MarkdownPlugin.html" />
+			<filename name="mermaid.min.js" />
+		</or>
 	</selector>
 
 	<target name="build.prepare">
