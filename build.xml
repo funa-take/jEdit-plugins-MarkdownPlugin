@@ -21,8 +21,9 @@
     <path id="project.class.path">
 		<pathelement location="${jedit.install.dir}/jedit.jar"/>
 		<pathelement location="${install.dir}/InfoViewer.jar"/>
-		<pathelement location="lib/parboiled4j-0.9.9.0.jar"/>
-		<pathelement location="lib/pegdown-0.8.5.4.jar"/>
+		<fileset dir="lib">
+			<filename name="*.jar"/>
+		</fileset>
 	</path>
 
 	<selector id="packageFiles">

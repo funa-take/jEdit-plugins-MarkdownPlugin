@@ -4,10 +4,21 @@ import org.gjt.sp.jedit.EditPlugin;
 import org.gjt.sp.jedit.jEdit;
 import org.gjt.sp.util.Log;
 
-import org.pegdown.Extensions;
-import org.pegdown.PegDownProcessor;
+import com.vladsch.flexmark.ext.abbreviation.AbbreviationExtension;
+import com.vladsch.flexmark.ext.autolink.AutolinkExtension;
+import com.vladsch.flexmark.ext.tables.TablesExtension;
+import com.vladsch.flexmark.ext.typographic.TypographicExtension;
+import com.vladsch.flexmark.html.HtmlRenderer;
+import com.vladsch.flexmark.parser.Parser;
+import com.vladsch.flexmark.util.ast.Node;
+import com.vladsch.flexmark.util.data.MutableDataSet;
+import com.vladsch.flexmark.util.misc.Extension;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Markdown utility class
@@ -21,12 +32,6 @@ public class MarkdownUtil extends EditPlugin {
 		"abbreviations", "autolinks", "hardwraps", "quotes", "smarts",
 		"smartypants", "tables", "noBlocks", "noInline", "noHypertext"
 	};
-	static final int[] EXTENSION_ID = new int[] {
-		Extensions.ABBREVIATIONS, Extensions.AUTOLINKS, Extensions.HARDWRAPS,
-		Extensions.QUOTES, Extensions.SMARTS, Extensions.SMARTYPANTS,
-		Extensions.TABLES, Extensions.SUPPRESS_HTML_BLOCKS,
-		Extensions.SUPPRESS_INLINE_HTML, Extensions.SUPPRESS_ALL_HTML
-	};
 	static final String TARGET = "target";
 
 	public static MarkdownUtil getInstance() {
@@ -34,20 +39,21 @@ public class MarkdownUtil extends EditPlugin {
 	}
 
 	/**
-	 * Returns the current set of pegdown extensions.
-	 * @return Set of pegdown extensions.
+	 * Returns the names of the currently enabled extensions.
+	 * @see #EXTENSION_NAME
 	 */
-	public int getExtensions() {
-		return extensions;
+	public Set<String> getExtensions() {
+		return extensionNames;
 	}
 
 	/**
-	 * Sets the new set of pegdown extensions and create a new processor.
-	 * @param extensions The value to extensions.
+	 * Sets the new set of enabled extensions (by name, see EXTENSION_NAME)
+	 * and rebuilds the parser/renderer.
+	 * @param extensionNames The names of the extensions to enable.
 	 */
-	public void setExtensions(final int extensions) {
-		this.extensions = saveExtensions(extensions);
-		processor = new PegDownProcessor(this.extensions);
+	public void setExtensions(final Set<String> extensionNames) {
+		this.extensionNames = saveExtensions(extensionNames);
+		build(this.extensionNames);
 	}
 
 	/**
@@ -67,24 +73,31 @@ public class MarkdownUtil extends EditPlugin {
 		this.target = target;
 	}
 
-	public PegDownProcessor getProcessor() {
-		return processor;
+	/**
+	 * Convert the given Markdown text to HTML using the current extension settings.
+	 * @param text Markdown source text.
+	 * @return Rendered HTML.
+	 */
+	public String render(final String text) {
+		final Node document = parser.parse(text);
+
+		return renderer.render(document);
 	}
 
 	private static MarkdownUtil singleton;
 
-	private PegDownProcessor processor;
-	private int extensions;
+	private Parser parser;
+	private HtmlRenderer renderer;
+	private Set<String> extensionNames;
 	private MarkdownPlugin.Target target;
-	
+
 	static {
 		singleton = new MarkdownUtil();
 	}
 
 	private MarkdownUtil() {
-		assert EXTENSION_NAME.length == EXTENSION_ID.length : "names: " + EXTENSION_NAME.length + " != ids: " + EXTENSION_ID.length;
-		extensions = readExtensions();
-		processor = new PegDownProcessor(extensions);
+		extensionNames = readExtensions();
+		build(extensionNames);
 		try {
 			target = Enum.valueOf(MarkdownPlugin.Target.class, jEdit.getProperty(MarkdownPlugin.OPTION_PREFIX + TARGET, MarkdownPlugin.Target.Buffer.name()));
 		} catch (IllegalArgumentException iaex) {
@@ -95,55 +108,82 @@ public class MarkdownUtil extends EditPlugin {
 		}
 	}
 
-	private int readExtensions() {
-		int valid_extensions;
+	/**
+	 * (Re)builds the flexmark parser/renderer pair for the given set of enabled extension names.
+	 */
+	private void build(final Set<String> names) {
+		final MutableDataSet options = new MutableDataSet();
+		final List<Extension> flexmarkExtensions = new ArrayList<Extension>();
 
-		if (jEdit.getBooleanProperty(MarkdownPlugin.OPTION_PREFIX + NONE_EXTENSIONS, false)) {
-			valid_extensions = Extensions.NONE;
-		} else if (jEdit.getBooleanProperty(MarkdownPlugin.OPTION_PREFIX + ALL_EXTENSIONS, true)) {
-			valid_extensions = Extensions.ALL;
+		if (names.contains("tables")) {
+			flexmarkExtensions.add(TablesExtension.create());
+		}
+		if (names.contains("autolinks")) {
+			flexmarkExtensions.add(AutolinkExtension.create());
+		}
+		if (names.contains("abbreviations")) {
+			flexmarkExtensions.add(AbbreviationExtension.create());
+		}
+		if (names.contains("quotes") || names.contains("smarts") || names.contains("smartypants")) {
+			flexmarkExtensions.add(TypographicExtension.create());
+		}
+		options.set(Parser.EXTENSIONS, flexmarkExtensions);
+		if (names.contains("hardwraps")) {
+			options.set(HtmlRenderer.SOFT_BREAK, "<br />\n");
+		}
+		if (names.contains("noHypertext")) {
+			options.set(HtmlRenderer.SUPPRESS_HTML, true);
 		} else {
-			valid_extensions = Extensions.NONE;
-			for (int i = 0; i < EXTENSION_ID.length; i++) {
-				if (jEdit.getBooleanProperty(MarkdownPlugin.OPTION_PREFIX + EXTENSION_NAME[i], false)) {
-					valid_extensions |= EXTENSION_ID[i];
-				}
+			if (names.contains("noBlocks")) {
+				options.set(HtmlRenderer.SUPPRESS_HTML_BLOCKS, true);
+			}
+			if (names.contains("noInline")) {
+				options.set(HtmlRenderer.SUPPRESS_INLINE_HTML, true);
 			}
 		}
-
-		return valid_extensions;
+		parser = Parser.builder(options).build();
+		renderer = HtmlRenderer.builder(options).build();
 	}
 
-	private synchronized int saveExtensions(final int extensions) {
-		final boolean properties[] = new boolean[EXTENSION_NAME.length];
-		int valid_extensions;
+	private Set<String> readExtensions() {
+		final Set<String> names = new LinkedHashSet<String>();
 
-		Arrays.fill(properties, false);
-		if (Extensions.NONE == extensions) {
-			valid_extensions = extensions;
-			jEdit.setBooleanProperty(MarkdownPlugin.OPTION_PREFIX + NONE_EXTENSIONS, true);
-			jEdit.setBooleanProperty(MarkdownPlugin.OPTION_PREFIX + ALL_EXTENSIONS, false);
-		} else if (Extensions.ALL == (extensions & Extensions.ALL)) {
-			valid_extensions = Extensions.ALL;
-			jEdit.setBooleanProperty(MarkdownPlugin.OPTION_PREFIX + NONE_EXTENSIONS, false);
-			jEdit.setBooleanProperty(MarkdownPlugin.OPTION_PREFIX + ALL_EXTENSIONS, true);
-		} else {
-			jEdit.setBooleanProperty(MarkdownPlugin.OPTION_PREFIX + NONE_EXTENSIONS, false);
-			jEdit.setBooleanProperty(MarkdownPlugin.OPTION_PREFIX + ALL_EXTENSIONS, false);
-			valid_extensions = Extensions.NONE;
-			for (int i = 0; i < EXTENSION_ID.length; i++) {
-				if (EXTENSION_ID[i] == (extensions & EXTENSION_ID[i])) {
-					properties[i] = true;
-					valid_extensions |= EXTENSION_ID[i];
-				}
+		if (jEdit.getBooleanProperty(MarkdownPlugin.OPTION_PREFIX + NONE_EXTENSIONS, false)) {
+			return names;
+		}
+		if (jEdit.getBooleanProperty(MarkdownPlugin.OPTION_PREFIX + ALL_EXTENSIONS, true)) {
+			names.addAll(Arrays.asList(EXTENSION_NAME));
+			return names;
+		}
+		for (String name : EXTENSION_NAME) {
+			if (jEdit.getBooleanProperty(MarkdownPlugin.OPTION_PREFIX + name, false)) {
+				names.add(name);
 			}
 		}
-		for (int i = 0; i < EXTENSION_ID.length; i++) {
-			jEdit.setBooleanProperty(MarkdownPlugin.OPTION_PREFIX + EXTENSION_NAME[i], properties[i]);
+
+		return names;
+	}
+
+	private synchronized Set<String> saveExtensions(final Set<String> names) {
+		final List<String> known = Arrays.asList(EXTENSION_NAME);
+		final Set<String> valid = new LinkedHashSet<String>();
+
+		for (String name : names) {
+			if (known.contains(name)) {
+				valid.add(name);
+			}
 		}
 
-		return valid_extensions;
+		final boolean isNone = valid.isEmpty();
+		final boolean isAll = valid.size() == EXTENSION_NAME.length;
+
+		jEdit.setBooleanProperty(MarkdownPlugin.OPTION_PREFIX + NONE_EXTENSIONS, isNone);
+		jEdit.setBooleanProperty(MarkdownPlugin.OPTION_PREFIX + ALL_EXTENSIONS, isAll);
+		for (String name : EXTENSION_NAME) {
+			jEdit.setBooleanProperty(MarkdownPlugin.OPTION_PREFIX + name, valid.contains(name));
+		}
+
+		return valid;
 	}
 
 }
-

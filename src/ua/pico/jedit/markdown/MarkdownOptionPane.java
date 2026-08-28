@@ -4,13 +4,15 @@ import org.gjt.sp.jedit.AbstractOptionPane;
 import org.gjt.sp.jedit.jEdit;
 import org.gjt.sp.util.Log;
 
-import org.pegdown.Extensions;
-
 import javax.swing.ButtonGroup;
 import javax.swing.JCheckBox;
 import javax.swing.JRadioButton;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
+
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 public class MarkdownOptionPane extends AbstractOptionPane implements ChangeListener {
 
@@ -47,7 +49,7 @@ public class MarkdownOptionPane extends AbstractOptionPane implements ChangeList
 		addComponent(chooseButton);
 		noneButton.setSelected(true);
 		// Markdown extensions
-		extensions = new JCheckBox[MarkdownUtil.EXTENSION_ID.length];
+		extensions = new JCheckBox[MarkdownUtil.EXTENSION_NAME.length];
 		for (int i = 0; i < extensions.length; i++) {
 			extensions[i] = new JCheckBox(jEdit.getProperty(MarkdownPlugin.OPTION_PREFIX + MarkdownUtil.EXTENSION_NAME[i] + label));
 			extensions[i].setEnabled(false);
@@ -72,7 +74,7 @@ public class MarkdownOptionPane extends AbstractOptionPane implements ChangeList
 
 	@Override
 	protected void _init() {
-		final int usedExtensions = markdownUtil.getExtensions();
+		final Set<String> usedExtensions = markdownUtil.getExtensions();
 
 		switch (markdownUtil.getTarget()) {
 		case Clipboard:
@@ -85,19 +87,16 @@ public class MarkdownOptionPane extends AbstractOptionPane implements ChangeList
 		default:
 			bufferButton.setSelected(true);
 		}
-		switch (usedExtensions) {
-		case Extensions.NONE:
+		if (usedExtensions.isEmpty()) {
 			noneButton.setSelected(true);
-			break;
-		case Extensions.ALL:
+		} else if (usedExtensions.size() == MarkdownUtil.EXTENSION_NAME.length) {
 			allButton.setSelected(true);
-			break;
-		default:
+		} else {
 			chooseButton.setSelected(true);
 		}
 		if (chooseButton.isSelected()) {
-			for (int i = 0; i < MarkdownUtil.EXTENSION_ID.length; i++) {
-				if (MarkdownUtil.EXTENSION_ID[i] == (usedExtensions & MarkdownUtil.EXTENSION_ID[i])) {
+			for (int i = 0; i < MarkdownUtil.EXTENSION_NAME.length; i++) {
+				if (usedExtensions.contains(MarkdownUtil.EXTENSION_NAME[i])) {
 					extensions[i].setSelected(true);
 				}
 			}
@@ -106,7 +105,7 @@ public class MarkdownOptionPane extends AbstractOptionPane implements ChangeList
 
 	@Override
 	protected void _save() {
-		int usedExtensions;
+		final Set<String> usedExtensions = new LinkedHashSet<String>();
 
 		if (clipboardButton.isSelected()) {
 			markdownUtil.setTarget(MarkdownPlugin.Target.Clipboard);
@@ -115,15 +114,12 @@ public class MarkdownOptionPane extends AbstractOptionPane implements ChangeList
 		} else {
 			markdownUtil.setTarget(MarkdownPlugin.Target.Buffer);
 		}
-		if (noneButton.isSelected()) {
-			usedExtensions = Extensions.NONE;
-		} else if (allButton.isSelected()) {
-			usedExtensions = Extensions.ALL;
-		} else {
-			usedExtensions = Extensions.NONE;
+		if (allButton.isSelected()) {
+			usedExtensions.addAll(Arrays.asList(MarkdownUtil.EXTENSION_NAME));
+		} else if (chooseButton.isSelected()) {
 			for (int i = 0; i < extensions.length; i++) {
 				if (extensions[i].isSelected()) {
-					usedExtensions |= MarkdownUtil.EXTENSION_ID[i];
+					usedExtensions.add(MarkdownUtil.EXTENSION_NAME[i]);
 				}
 			}
 		}

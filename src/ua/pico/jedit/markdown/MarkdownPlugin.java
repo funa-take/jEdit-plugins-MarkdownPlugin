@@ -8,8 +8,6 @@ import org.gjt.sp.jedit.View;
 import org.gjt.sp.jedit.textarea.Selection;
 import org.gjt.sp.util.Log;
 
-import org.pegdown.PegDownProcessor;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -55,7 +53,6 @@ public class MarkdownPlugin extends EditPlugin {
 
 	private void renderBuffer(final View view, final Buffer markdownBuffer, Target target) {
 		final MarkdownUtil util = MarkdownUtil.getInstance();
-		final PegDownProcessor processor = util.getProcessor();
 		String text = markdownBuffer.getText(0, markdownBuffer.getLength());
 
 		if (0 == text.length()) {
@@ -69,7 +66,7 @@ public class MarkdownPlugin extends EditPlugin {
 		if (null == target) {
 			target = util.getTarget();
 		}
-		text = processor.markdownToHtml(text);
+		text = util.render(text);
 		switch (target) {
 		case Clipboard:
 			saveToClipboard(text);
@@ -86,7 +83,6 @@ public class MarkdownPlugin extends EditPlugin {
 	private void renderSelection(final View view, final Buffer markdownBuffer, final Selection[] selections, Target target) {
 		final String newLine = "\n";
 		final MarkdownUtil util = MarkdownUtil.getInstance();
-		final PegDownProcessor processor = util.getProcessor();
 		final StringBuilder selected = new StringBuilder();
 		
 		String text;
@@ -109,7 +105,7 @@ public class MarkdownPlugin extends EditPlugin {
 				selected.append(newLine);
 			}
 		}
-		text = processor.markdownToHtml(selected.toString());
+		text = util.render(selected.toString());
 		switch (target) {
 		case Clipboard:
 			saveToClipboard(text);
