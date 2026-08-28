@@ -212,7 +212,7 @@ public class MarkdownPlugin extends EditPlugin {
 			}
 			if (null != mermaidJs && mermaidJs.exists()) {
 				builder.append("<script src=\"").append(mermaidJs.toURI().toURL().toString()).append("\"></script>");
-				builder.append("<script>mermaid.initialize({startOnLoad: true});</script>");
+				builder.append("<script>mermaid.initialize({startOnLoad: true, flowchart: {useMaxWidth: false}, sequence: {useMaxWidth: false}, gantt: {useMaxWidth: false}});</script>");
 			}
 			builder.append("</head><body>");
 			builder.append(text).append(html_epilogue);
