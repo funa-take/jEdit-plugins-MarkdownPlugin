@@ -30,6 +30,7 @@
 		<or>
 			<filename name="MarkdownPlugin.html" />
 			<filename name="mermaid.min.js" />
+			<filename name="svg-pan-zoom.min.js" />
 		</or>
 	</selector>
 

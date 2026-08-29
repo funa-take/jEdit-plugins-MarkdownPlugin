@@ -25,6 +25,48 @@ public class MarkdownPlugin extends EditPlugin {
 	public static final String OPTION_PREFIX = "options.markdown.";
 
 	private static final String MERMAID_JS = "mermaid.min.js";
+	private static final String SVG_PAN_ZOOM_JS = "svg-pan-zoom.min.js";
+
+	/**
+	 * Initializes mermaid and, for every rendered diagram, sizes it to
+	 * fill the preview's available width at natural scale (no forced
+	 * scaling; the SVG's viewBox is simply extended to the container
+	 * width, leaving unused width blank rather than stretching content)
+	 * and wires up svg-pan-zoom for drag-to-pan / wheel-to-zoom. The
+	 * height is clamped between 120px and 60% of the window height.
+	 * Re-applies the width/height fit (but not the zoom level) when the
+	 * browser window is resized.
+	 */
+	private static final String MERMAID_INIT_SCRIPT =
+		"mermaid.initialize({startOnLoad: false, flowchart: {useMaxWidth: false}, sequence: {useMaxWidth: false}, gantt: {useMaxWidth: false}});" +
+		"mermaid.run({querySelector: '.mermaid', postRenderCallback: function(id) {" +
+		"  var svg = document.getElementById(id);" +
+		"  if (!svg) { return; }" +
+		"  var box = svg.parentNode;" +
+		"  var naturalH = svg.viewBox.baseVal.height;" +
+		"  var finalHeight = Math.max(120, Math.min(naturalH, window.innerHeight * 0.6));" +
+		"  var availableWidth = box.getBoundingClientRect().width;" +
+		"  svg.setAttribute('viewBox', '0 0 ' + availableWidth + ' ' + finalHeight);" +
+		"  svg.setAttribute('width', availableWidth);" +
+		"  svg.setAttribute('height', finalHeight);" +
+		"  svg.style.width = '100%';" +
+		"  svg.style.height = '100%';" +
+		"  box.style.height = finalHeight + 'px';" +
+		"  var pz = svgPanZoom(svg, {panEnabled: true, zoomEnabled: true, controlIconsEnabled: false, fit: false, center: false, minZoom: 0.1, maxZoom: 20});" +
+		"  pz.pan({x: 0, y: 0});" +
+		"  var resizeTimer = null;" +
+		"  window.addEventListener('resize', function() {" +
+		"    if (resizeTimer) { clearTimeout(resizeTimer); }" +
+		"    resizeTimer = setTimeout(function() {" +
+		"      var currentWidth = box.getBoundingClientRect().width;" +
+		"      var newFinalHeight = Math.max(120, Math.min(naturalH, window.innerHeight * 0.6));" +
+		"      svg.setAttribute('viewBox', '0 0 ' + currentWidth + ' ' + newFinalHeight);" +
+		"      svg.setAttribute('width', currentWidth);" +
+		"      box.style.height = newFinalHeight + 'px';" +
+		"      pz.resize();" +
+		"    }, 150);" +
+		"  });" +
+		"}});";
 
 	public MarkdownPlugin() {
 		super();
@@ -32,39 +74,40 @@ public class MarkdownPlugin extends EditPlugin {
 
 	@Override
 	public void start() {
-		extractMermaidJs();
+		extractResource(MERMAID_JS);
+		extractResource(SVG_PAN_ZOOM_JS);
 	}
 
 	/**
-	 * Extracts the mermaid.min.js bundled in the plugin jar to the plugin
-	 * home, so the preview HTML can reference it as a local file (no
-	 * network access needed to render mermaid diagrams).
+	 * Extracts a resource bundled in the plugin jar to the plugin home,
+	 * so the preview HTML can reference it as a local file (no network
+	 * access needed).
 	 */
-	private void extractMermaidJs() {
+	private void extractResource(final String name) {
 		final File home = getPluginHome();
 
 		if (null == home) {
 			return;
 		}
 
-		final File mermaidJs = new File(home, MERMAID_JS);
+		final File target = new File(home, name);
 
-		if (mermaidJs.exists()) {
+		if (target.exists()) {
 			return;
 		}
 		if (!home.exists() && !home.mkdirs()) {
 			Log.log(Log.ERROR, MarkdownPlugin.class, "Cannot create plugin home: " + home);
 			return;
 		}
-		try (InputStream in = MarkdownPlugin.class.getResourceAsStream("/" + MERMAID_JS)) {
+		try (InputStream in = MarkdownPlugin.class.getResourceAsStream("/" + name)) {
 			if (null == in) {
-				Log.log(Log.ERROR, MarkdownPlugin.class, MERMAID_JS + " not found in the plugin jar.");
+				Log.log(Log.ERROR, MarkdownPlugin.class, name + " not found in the plugin jar.");
 				return;
 			}
-			Files.copy(in, mermaidJs.toPath());
-			Log.log(Log.DEBUG, MarkdownPlugin.class, "Extracted " + MERMAID_JS + " to " + mermaidJs);
+			Files.copy(in, target.toPath());
+			Log.log(Log.DEBUG, MarkdownPlugin.class, "Extracted " + name + " to " + target);
 		} catch (IOException ioex) {
-			Log.log(Log.ERROR, MarkdownPlugin.class, "Cannot extract " + MERMAID_JS + ": " + ioex.getMessage());
+			Log.log(Log.ERROR, MarkdownPlugin.class, "Cannot extract " + name + ": " + ioex.getMessage());
 		}
 	}
 
@@ -183,6 +226,7 @@ public class MarkdownPlugin extends EditPlugin {
 		final String css = jEdit.getProperty(OPTION_PREFIX + "preview.css", "");
 		final File pluginHome = getPluginHome();
 		final File mermaidJs = null == pluginHome ? null : new File(pluginHome, MERMAID_JS);
+		final File svgPanZoomJs = null == pluginHome ? null : new File(pluginHome, SVG_PAN_ZOOM_JS);
 		String name;
 		File html = null;
 		Writer writer;
@@ -210,12 +254,17 @@ public class MarkdownPlugin extends EditPlugin {
 			if (0 != css.length()) {
 				builder.append("<style>").append(css).append("</style>");
 			}
-			if (null != mermaidJs && mermaidJs.exists()) {
-				builder.append("<script src=\"").append(mermaidJs.toURI().toURL().toString()).append("\"></script>");
-				builder.append("<script>mermaid.initialize({startOnLoad: true, flowchart: {useMaxWidth: false}, sequence: {useMaxWidth: false}, gantt: {useMaxWidth: false}});</script>");
-			}
 			builder.append("</head><body>");
-			builder.append(text).append(html_epilogue);
+			builder.append(text);
+			if (null != mermaidJs && mermaidJs.exists() && null != svgPanZoomJs && svgPanZoomJs.exists()) {
+				// Placed after the diagram markup (not in <head>) so the
+				// .mermaid elements already exist in the DOM by the time
+				// mermaid.run() scans for them.
+				builder.append("<script src=\"").append(mermaidJs.toURI().toURL().toString()).append("\"></script>");
+				builder.append("<script src=\"").append(svgPanZoomJs.toURI().toURL().toString()).append("\"></script>");
+				builder.append("<script>").append(MERMAID_INIT_SCRIPT).append("</script>");
+			}
+			builder.append(html_epilogue);
 			writer.write(builder.toString());
 			writer.close();
 			Log.log(Log.DEBUG, MarkdownPlugin.class, "Preview in browser.");
