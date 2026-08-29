@@ -32,10 +32,11 @@ public class MarkdownPlugin extends EditPlugin {
 	 * fill the preview's available width at natural scale (no forced
 	 * scaling; the SVG's viewBox is simply extended to the container
 	 * width, leaving unused width blank rather than stretching content)
-	 * and wires up svg-pan-zoom for drag-to-pan / wheel-to-zoom. The
-	 * height is clamped between 120px and 60% of the window height.
-	 * Re-applies the width/height fit (but not the zoom level) when the
-	 * browser window is resized.
+	 * and wires up svg-pan-zoom for drag-to-pan / Ctrl(Cmd)+wheel-to-zoom
+	 * (plain wheel scrolls the page as usual). The height is clamped
+	 * between 120px and 60% of the window height. Re-applies the
+	 * width/height fit (but not the zoom level) when the browser window
+	 * is resized.
 	 */
 	private static final String MERMAID_INIT_SCRIPT =
 		"mermaid.initialize({startOnLoad: false, flowchart: {useMaxWidth: false}, sequence: {useMaxWidth: false}, gantt: {useMaxWidth: false}});" +
@@ -52,8 +53,16 @@ public class MarkdownPlugin extends EditPlugin {
 		"  svg.style.width = '100%';" +
 		"  svg.style.height = '100%';" +
 		"  box.style.height = finalHeight + 'px';" +
-		"  var pz = svgPanZoom(svg, {panEnabled: true, zoomEnabled: true, controlIconsEnabled: false, fit: false, center: false, minZoom: 0.1, maxZoom: 20});" +
+		"  var pz = svgPanZoom(svg, {panEnabled: true, zoomEnabled: true, controlIconsEnabled: false, fit: false, center: false, minZoom: 0.1, maxZoom: 20, mouseWheelZoomEnabled: false});" +
 		"  pz.pan({x: 0, y: 0});" +
+		"  svg.addEventListener('wheel', function(evt) {" +
+		"    if (!evt.ctrlKey && !evt.metaKey) { return; }" +
+		"    evt.preventDefault();" +
+		"    var rect = svg.getBoundingClientRect();" +
+		"    var point = {x: evt.clientX - rect.left, y: evt.clientY - rect.top};" +
+		"    var factor = evt.deltaY < 0 ? 1.1 : 0.9;" +
+		"    pz.zoomAtPointBy(factor, point);" +
+		"  });" +
 		"  var resizeTimer = null;" +
 		"  window.addEventListener('resize', function() {" +
 		"    if (resizeTimer) { clearTimeout(resizeTimer); }" +
