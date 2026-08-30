@@ -11,3 +11,12 @@
   ノード数が多いmermaid図がプレビューで縮小されすぎる問題を修正
   （useMaxWidth: falseを指定し原寸大で描画、はみ出す分は図の部分
   だけを横スクロールできるようにした）
+  mermaid図にドラッグでのpan、Ctrl(Cmd)+ホイールでのzoom機能を追加
+  （svg-pan-zoomをローカル同梱）
+
+○2026/08/30
+  mermaid図のパン操作をCtrl(Cmd)+ドラッグに変更し、素のドラッグ・
+  ダブルクリックはテキスト選択できるようにした
+  （svg-pan-zoomのpreventMouseEventsDefaultオプションが有効だと、
+  pan/zoomを無効化しても内部でpreventDefault()が呼ばれ続けて
+  テキスト選択が阻害されていたため、明示的に無効化）
