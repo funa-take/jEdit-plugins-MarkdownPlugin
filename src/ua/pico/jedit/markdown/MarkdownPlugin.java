@@ -28,16 +28,24 @@ public class MarkdownPlugin extends EditPlugin {
 	private static final String SVG_PAN_ZOOM_JS = "svg-pan-zoom.min.js";
 
 	/**
-	 * Initializes mermaid and, for every rendered diagram, sizes it to
-	 * fill the preview's available width at natural scale (no forced
-	 * scaling; the SVG's viewBox is simply extended to the container
-	 * width, leaving unused width blank rather than stretching content)
-	 * and wires up svg-pan-zoom for Ctrl(Cmd)+drag-to-pan /
-	 * Ctrl(Cmd)+wheel-to-zoom. Plain drag and double-click are left to
-	 * the browser's native text selection (plain wheel scrolls the page
-	 * as usual). The height is clamped between 120px and 60% of the
-	 * window height. Re-applies the width/height fit (but not the zoom
-	 * level) when the browser window is resized.
+	 * Initializes mermaid and, for every rendered diagram, displays it
+	 * at natural scale. The frame's width and height always match the
+	 * currently displayed content's size: the width is floored at the
+	 * container's own width (so it never looks like a narrow column,
+	 * and grows a horizontal scrollbar once zoomed, or for a naturally
+	 * wide diagram from the start, past that); the height simply
+	 * follows the zoom level (so zooming out shrinks the frame right
+	 * along with the content instead of leaving blank space below it),
+	 * floored at 70px to keep a single-row diagram from becoming an
+	 * unreadable sliver when zoomed far out. Alt(Option)+drag pans the
+	 * diagram and Alt(Option)+wheel zooms it (rarely needed now that
+	 * the frame always fits the content, but kept for edge cases);
+	 * plain drag and double-click are left to the browser's native
+	 * text selection (plain wheel scrolls the page as usual). On
+	 * window resize, the width floor is simply re-measured
+	 * off the parent element (since the container itself may currently
+	 * be wider than that due to zooming) and the frame re-applied at
+	 * the current zoom level.
 	 */
 	private static final String MERMAID_INIT_SCRIPT =
 		"mermaid.initialize({startOnLoad: false, flowchart: {useMaxWidth: false}, sequence: {useMaxWidth: false}, gantt: {useMaxWidth: false}});" +
@@ -45,29 +53,38 @@ public class MarkdownPlugin extends EditPlugin {
 		"  var svg = document.getElementById(id);" +
 		"  if (!svg) { return; }" +
 		"  var box = svg.parentNode;" +
+		"  box.style.maxWidth = 'none';" +
+		"  var naturalW = svg.viewBox.baseVal.width;" +
 		"  var naturalH = svg.viewBox.baseVal.height;" +
-		"  var finalHeight = Math.max(120, Math.min(naturalH, window.innerHeight * 0.6));" +
-		"  var availableWidth = box.getBoundingClientRect().width;" +
-		"  svg.setAttribute('viewBox', '0 0 ' + availableWidth + ' ' + finalHeight);" +
-		"  svg.setAttribute('width', availableWidth);" +
-		"  svg.setAttribute('height', finalHeight);" +
+		"  var minW = box.parentNode.getBoundingClientRect().width;" +
+		"  function applyFrame(z) {" +
+		"    var w = Math.max(minW, naturalW * z);" +
+		"    var h = Math.max(70, naturalH * z);" +
+		"    svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);" +
+		"    svg.setAttribute('width', w);" +
+		"    svg.setAttribute('height', h);" +
+		"    box.style.width = w + 'px';" +
+		"    box.style.height = h + 'px';" +
+		"    return h;" +
+		"  }" +
+		"  applyFrame(1);" +
 		"  svg.style.width = '100%';" +
 		"  svg.style.height = '100%';" +
-		"  box.style.height = finalHeight + 'px';" +
 		"  var pz = svgPanZoom(svg, {panEnabled: false, zoomEnabled: true, controlIconsEnabled: false, fit: false, center: false, minZoom: 0.1, maxZoom: 20, mouseWheelZoomEnabled: false, dblClickZoomEnabled: false, preventMouseEventsDefault: false});" +
 		"  pz.pan({x: 0, y: 0});" +
 		"  svg.addEventListener('wheel', function(evt) {" +
-		"    if (!evt.ctrlKey && !evt.metaKey) { return; }" +
+		"    if (!evt.altKey) { return; }" +
 		"    evt.preventDefault();" +
 		"    var rect = svg.getBoundingClientRect();" +
 		"    var point = {x: evt.clientX - rect.left, y: evt.clientY - rect.top};" +
 		"    var factor = evt.deltaY < 0 ? 1.1 : 0.9;" +
 		"    pz.zoomAtPointBy(factor, point);" +
+		"    applyFrame(pz.getZoom());" +
 		"  });" +
 		"  var isPanning = false;" +
 		"  var lastPoint = null;" +
 		"  svg.addEventListener('mousedown', function(evt) {" +
-		"    if (!evt.ctrlKey && !evt.metaKey) { return; }" +
+		"    if (!evt.altKey) { return; }" +
 		"    isPanning = true;" +
 		"    lastPoint = {x: evt.clientX, y: evt.clientY};" +
 		"    evt.preventDefault();" +
@@ -84,12 +101,8 @@ public class MarkdownPlugin extends EditPlugin {
 		"  window.addEventListener('resize', function() {" +
 		"    if (resizeTimer) { clearTimeout(resizeTimer); }" +
 		"    resizeTimer = setTimeout(function() {" +
-		"      var currentWidth = box.getBoundingClientRect().width;" +
-		"      var newFinalHeight = Math.max(120, Math.min(naturalH, window.innerHeight * 0.6));" +
-		"      svg.setAttribute('viewBox', '0 0 ' + currentWidth + ' ' + newFinalHeight);" +
-		"      svg.setAttribute('width', currentWidth);" +
-		"      box.style.height = newFinalHeight + 'px';" +
-		"      pz.resize();" +
+		"      minW = box.parentNode.getBoundingClientRect().width;" +
+		"      applyFrame(pz.getZoom());" +
 		"    }, 150);" +
 		"  });" +
 		"}});";
