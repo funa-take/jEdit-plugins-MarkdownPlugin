@@ -31,6 +31,8 @@
 			<filename name="MarkdownPlugin.html" />
 			<filename name="mermaid.min.js" />
 			<filename name="svg-pan-zoom.min.js" />
+			<filename name="highlight.min.js" />
+			<filename name="highlight-github.min.css" />
 		</or>
 	</selector>
 

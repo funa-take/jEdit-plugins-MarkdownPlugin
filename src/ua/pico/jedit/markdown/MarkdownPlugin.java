@@ -35,6 +35,8 @@ public class MarkdownPlugin extends EditPlugin {
 
 	private static final String MERMAID_JS = "mermaid.min.js";
 	private static final String SVG_PAN_ZOOM_JS = "svg-pan-zoom.min.js";
+	private static final String HIGHLIGHT_JS = "highlight.min.js";
+	private static final String HIGHLIGHT_CSS = "highlight-github.min.css";
 
 	/**
 	 * Initializes mermaid and, for every rendered diagram, displays it
@@ -124,6 +126,8 @@ public class MarkdownPlugin extends EditPlugin {
 	public void start() {
 		extractResource(MERMAID_JS);
 		extractResource(SVG_PAN_ZOOM_JS);
+		extractResource(HIGHLIGHT_JS);
+		extractResource(HIGHLIGHT_CSS);
 	}
 
 	/**
@@ -364,6 +368,8 @@ public class MarkdownPlugin extends EditPlugin {
 		final File pluginHome = getPluginHome();
 		final File mermaidJs = null == pluginHome ? null : new File(pluginHome, MERMAID_JS);
 		final File svgPanZoomJs = null == pluginHome ? null : new File(pluginHome, SVG_PAN_ZOOM_JS);
+		final File highlightJs = null == pluginHome ? null : new File(pluginHome, HIGHLIGHT_JS);
+		final File highlightCss = null == pluginHome ? null : new File(pluginHome, HIGHLIGHT_CSS);
 		File html = null;
 
 		try {
@@ -386,6 +392,9 @@ public class MarkdownPlugin extends EditPlugin {
 			if (0 != css.length()) {
 				builder.append("<style>").append(css).append("</style>");
 			}
+			if (null != highlightCss && highlightCss.exists()) {
+				builder.append("<link rel=\"stylesheet\" href=\"").append(highlightCss.toURI().toURL().toString()).append("\"/>");
+			}
 			builder.append("</head><body>");
 			builder.append(text);
 			if (null != mermaidJs && mermaidJs.exists() && null != svgPanZoomJs && svgPanZoomJs.exists()) {
@@ -395,6 +404,13 @@ public class MarkdownPlugin extends EditPlugin {
 				builder.append("<script src=\"").append(mermaidJs.toURI().toURL().toString()).append("\"></script>");
 				builder.append("<script src=\"").append(svgPanZoomJs.toURI().toURL().toString()).append("\"></script>");
 				builder.append("<script>").append(MERMAID_INIT_SCRIPT).append("</script>");
+			}
+			if (null != highlightJs && highlightJs.exists()) {
+				// Placed after the code block markup (not in <head>) so
+				// the <pre><code> elements already exist in the DOM by
+				// the time hljs.highlightAll() scans for them.
+				builder.append("<script src=\"").append(highlightJs.toURI().toURL().toString()).append("\"></script>");
+				builder.append("<script>hljs.highlightAll();</script>");
 			}
 			builder.append(html_epilogue);
 			writer.write(builder.toString());
