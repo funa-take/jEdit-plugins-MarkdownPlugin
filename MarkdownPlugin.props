@@ -62,6 +62,6 @@ options.markdown.noInline=false
 options.markdown.noHypertext=false
 options.markdown.all=true
 options.markdown.none=false
-options.markdown.preview.css=table { border-collapse: collapse; margin: 0.5em 0; } th, td { border: 1px solid #888888; padding: 4px 8px; } th { background-color: #eeeeee; } .mermaid { overflow: hidden; border: 1px solid #cccccc; max-width: 100%; }
+options.markdown.preview.css=table { border-collapse: collapse; margin: 0.5em 0; } th, td { border: 1px solid #888888; padding: 4px 8px; } th { background-color: #eeeeee; } .mermaid { overflow: hidden; border: 1px solid #cccccc; max-width: 100%; } pre code.hljs { background-color: #f6f8fa; border: 1px solid #d0d7de; border-radius: 4px; }
 
 

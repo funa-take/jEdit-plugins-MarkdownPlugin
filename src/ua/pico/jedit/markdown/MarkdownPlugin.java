@@ -389,11 +389,14 @@ public class MarkdownPlugin extends EditPlugin {
 			final StringBuilder builder = new StringBuilder();
 
 			builder.append("<!DOCTYPE html><html><head><meta charset=\"").append(charset).append("\"/><title>").append(name).append("</title>");
+			if (null != highlightCss && highlightCss.exists()) {
+				// Loaded before the user's own preview.css (below) so that
+				// CSS's normal "later rule wins" cascade lets preview.css
+				// override the theme's defaults (e.g. code block background).
+				builder.append("<link rel=\"stylesheet\" href=\"").append(highlightCss.toURI().toURL().toString()).append("\"/>");
+			}
 			if (0 != css.length()) {
 				builder.append("<style>").append(css).append("</style>");
-			}
-			if (null != highlightCss && highlightCss.exists()) {
-				builder.append("<link rel=\"stylesheet\" href=\"").append(highlightCss.toURI().toURL().toString()).append("\"/>");
 			}
 			builder.append("</head><body>");
 			builder.append(text);
