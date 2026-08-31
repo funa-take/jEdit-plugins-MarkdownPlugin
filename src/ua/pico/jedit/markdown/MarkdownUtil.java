@@ -32,6 +32,18 @@ public class MarkdownUtil extends EditPlugin {
 		"abbreviations", "autolinks", "hardwraps", "quotes", "smarts",
 		"smartypants", "tables", "noBlocks", "noInline", "noHypertext"
 	};
+	/**
+	 * The subset of EXTENSION_NAME that "Enable all available extensions"
+	 * actually enables. Deliberately excludes noBlocks/noInline/noHypertext,
+	 * which suppress HTML output rather than add a feature - bundling them
+	 * into "all" meant enabling every extension silently turned off
+	 * &lt;details&gt; and other raw HTML in the preview. Choosing extensions
+	 * individually can still enable them.
+	 */
+	static final String[] ALL_EXTENSION_NAME = new String[] {
+		"abbreviations", "autolinks", "hardwraps", "quotes", "smarts",
+		"smartypants", "tables"
+	};
 	static final String TARGET = "target";
 
 	public static MarkdownUtil getInstance() {
@@ -153,7 +165,7 @@ public class MarkdownUtil extends EditPlugin {
 			return names;
 		}
 		if (jEdit.getBooleanProperty(MarkdownPlugin.OPTION_PREFIX + ALL_EXTENSIONS, true)) {
-			names.addAll(Arrays.asList(EXTENSION_NAME));
+			names.addAll(Arrays.asList(ALL_EXTENSION_NAME));
 			return names;
 		}
 		for (String name : EXTENSION_NAME) {

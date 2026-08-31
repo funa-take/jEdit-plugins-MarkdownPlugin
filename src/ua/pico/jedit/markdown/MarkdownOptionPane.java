@@ -112,7 +112,7 @@ public class MarkdownOptionPane extends AbstractOptionPane implements ChangeList
 		}
 		if (usedExtensions.isEmpty()) {
 			noneButton.setSelected(true);
-		} else if (usedExtensions.size() == MarkdownUtil.EXTENSION_NAME.length) {
+		} else if (usedExtensions.equals(new LinkedHashSet<String>(Arrays.asList(MarkdownUtil.ALL_EXTENSION_NAME)))) {
 			allButton.setSelected(true);
 		} else {
 			chooseButton.setSelected(true);
@@ -139,7 +139,7 @@ public class MarkdownOptionPane extends AbstractOptionPane implements ChangeList
 			markdownUtil.setTarget(MarkdownPlugin.Target.Buffer);
 		}
 		if (allButton.isSelected()) {
-			usedExtensions.addAll(Arrays.asList(MarkdownUtil.EXTENSION_NAME));
+			usedExtensions.addAll(Arrays.asList(MarkdownUtil.ALL_EXTENSION_NAME));
 		} else if (chooseButton.isSelected()) {
 			for (int i = 0; i < extensions.length; i++) {
 				if (extensions[i].isSelected()) {
