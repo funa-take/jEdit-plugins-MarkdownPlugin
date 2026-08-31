@@ -5,8 +5,10 @@ import org.gjt.sp.jedit.EditPlugin;
 import org.gjt.sp.jedit.jEdit;
 import org.gjt.sp.jedit.Registers;
 import org.gjt.sp.jedit.View;
+import org.gjt.sp.jedit.io.VFS;
 import org.gjt.sp.jedit.textarea.Selection;
 import org.gjt.sp.util.Log;
+import org.gjt.sp.util.ThreadUtilities;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -15,7 +17,14 @@ import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.swing.JOptionPane;
+import javax.swing.SwingUtilities;
 
 import infoviewer.InfoViewerPlugin;
 
@@ -258,18 +267,67 @@ public class MarkdownPlugin extends EditPlugin {
 		clipboard.setValue(text);
 	}
 
+	private static final Pattern IMG_SRC_PATTERN = Pattern.compile("<img\\b[^>]*?\\bsrc\\s*=\\s*\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
+	private static final Pattern URI_SCHEME_PATTERN = Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*:");
+
+	/**
+	 * Finds every distinct <img src="..."> reference in the rendered
+	 * HTML that looks like a relative path rather than an absolute URL
+	 * (http://, data:, etc., which the browser can already resolve on
+	 * its own).
+	 */
+	private static List<String> findRelativeImages(final String html) {
+		final Set<String> found = new LinkedHashSet<>();
+		final Matcher matcher = IMG_SRC_PATTERN.matcher(html);
+
+		while (matcher.find()) {
+			final String src = matcher.group(1);
+
+			if (!URI_SCHEME_PATTERN.matcher(src).find()) {
+				found.add(src);
+			}
+		}
+
+		return new ArrayList<>(found);
+	}
+
+	/**
+	 * Copies each relative image reference from the buffer's own VFS
+	 * directory into targetDir, preserving its relative path so the
+	 * <img src="..."> in the already-rendered HTML keeps resolving
+	 * without needing to be rewritten. The preview HTML always lives in
+	 * the OS temp directory rather than next to the source file, so
+	 * this runs for every buffer (local or opened through a VFS like
+	 * sftp://) that references any relative-path image. Failing to
+	 * copy one image is logged and skipped rather than aborting the
+	 * whole preview.
+	 */
+	private void copyRelativeImages(final View view, final Buffer buffer, final List<String> images, final File targetDir) {
+		final VFS vfs = buffer.getVFS();
+
+		for (final String relPath : images) {
+			try {
+				final String sourcePath = vfs.constructPath(buffer.getDirectory(), relPath);
+				final File targetFile = new File(targetDir, relPath);
+				final File parent = targetFile.getParentFile();
+
+				if (null != parent && !parent.exists() && !parent.mkdirs()) {
+					Log.log(Log.WARNING, MarkdownPlugin.class, "Cannot create directory: " + parent);
+					continue;
+				}
+				if (VFS.copy(null, sourcePath, targetFile.getPath(), view, false)) {
+					targetFile.deleteOnExit();
+				} else {
+					Log.log(Log.WARNING, MarkdownPlugin.class, "Cannot copy image: " + sourcePath);
+				}
+			} catch (Exception ex) {
+				Log.log(Log.WARNING, MarkdownPlugin.class, "Cannot copy image \"" + relPath + "\": " + ex.getMessage());
+			}
+		}
+	}
+
 	private void showPreview(final View view, final Buffer buffer, final String text) {
-		final String html_epilogue = "</body></html>";
 		final InfoViewerPlugin browser = (InfoViewerPlugin) jEdit.getPlugin("infoviewer.InfoViewerPlugin");
-		final String charset = buffer.getStringProperty(buffer.ENCODING);
-		final String css = jEdit.getProperty(OPTION_PREFIX + "preview.css", "");
-		final File pluginHome = getPluginHome();
-		final File mermaidJs = null == pluginHome ? null : new File(pluginHome, MERMAID_JS);
-		final File svgPanZoomJs = null == pluginHome ? null : new File(pluginHome, SVG_PAN_ZOOM_JS);
-		String name;
-		File html = null;
-		Writer writer;
-		StringBuilder builder = new StringBuilder();
 
 		if (null == browser) {
 			final String message = "InfoViewer plugin not found.";
@@ -281,14 +339,49 @@ public class MarkdownPlugin extends EditPlugin {
 			return;
 		}
 
-		if (buffer.isUntitled()) {
-			name = "Markdown text";
+		final String name = buffer.isUntitled() ? "Markdown text" : buffer.getName();
+		final List<String> images = findRelativeImages(text);
+
+		if (images.isEmpty()) {
+			renderAndOpenPreview(view, buffer, browser, text, name, images);
 		} else {
-			name = buffer.getName();
+			// Copying goes over the VFS (network I/O for sftp:// etc.,
+			// but also plain local file I/O) and must not block the UI
+			// thread.
+			ThreadUtilities.runInBackground(new Runnable() {
+				public void run() {
+					renderAndOpenPreview(view, buffer, browser, text, name, images);
+				}
+			});
 		}
+	}
+
+	private void renderAndOpenPreview(final View view, final Buffer buffer, final InfoViewerPlugin browser,
+			final String text, final String name, final List<String> images) {
+		final String html_epilogue = "</body></html>";
+		final String charset = buffer.getStringProperty(buffer.ENCODING);
+		final String css = jEdit.getProperty(OPTION_PREFIX + "preview.css", "");
+		final File pluginHome = getPluginHome();
+		final File mermaidJs = null == pluginHome ? null : new File(pluginHome, MERMAID_JS);
+		final File svgPanZoomJs = null == pluginHome ? null : new File(pluginHome, SVG_PAN_ZOOM_JS);
+		File html = null;
+
 		try {
-			html = File.createTempFile(name, "." + MODE, new File(buffer.getDirectory()));
-			writer = new OutputStreamWriter(new FileOutputStream(html), charset);
+			// Always use the OS temp directory rather than the buffer's
+			// own directory: a VFS URL (sftp:// etc.) can't be used as a
+			// local path anyway, and keeping generated preview files out
+			// of the buffer's own (often version-controlled) directory
+			// is preferable even for local buffers. Any relative-path
+			// images the rendered HTML references are copied alongside
+			// it below so they still resolve.
+			html = File.createTempFile(name, "." + MODE, null);
+			if (!images.isEmpty()) {
+				copyRelativeImages(view, buffer, images, html.getParentFile());
+			}
+
+			final Writer writer = new OutputStreamWriter(new FileOutputStream(html), charset);
+			final StringBuilder builder = new StringBuilder();
+
 			builder.append("<!DOCTYPE html><html><head><meta charset=\"").append(charset).append("\"/><title>").append(name).append("</title>");
 			if (0 != css.length()) {
 				builder.append("<style>").append(css).append("</style>");
@@ -307,21 +400,33 @@ public class MarkdownPlugin extends EditPlugin {
 			writer.write(builder.toString());
 			writer.close();
 			Log.log(Log.DEBUG, MarkdownPlugin.class, "Preview in browser.");
-			browser.openURL(view, html.toURI().toURL().toString());
+
+			final File finalHtml = html;
+
+			SwingUtilities.invokeLater(new Runnable() {
+				public void run() {
+					try {
+						browser.openURL(view, finalHtml.toURI().toURL().toString());
+					} catch (IOException ioex) {
+						Log.log(Log.ERROR, MarkdownPlugin.class, "Cannot open preview: " + ioex.getMessage());
+					}
+				}
+			});
 		} catch (IOException ioex) {
 			final String message = "Cannot create a temporary file: " + ioex.getMessage();
 
-			view.getToolkit().beep();
 			Log.log(Log.ERROR, MarkdownPlugin.class, message);
-			JOptionPane.showMessageDialog(null, message, "Markdown Plugin", JOptionPane.ERROR_MESSAGE);
-
-			return;
+			SwingUtilities.invokeLater(new Runnable() {
+				public void run() {
+					view.getToolkit().beep();
+					JOptionPane.showMessageDialog(null, message, "Markdown Plugin", JOptionPane.ERROR_MESSAGE);
+				}
+			});
 		} finally {
 			if (null != html) {
 				html.deleteOnExit();
 			}
 		}
-		
 	}
 
 }
