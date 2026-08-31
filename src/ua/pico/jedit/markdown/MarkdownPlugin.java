@@ -272,47 +272,87 @@ public class MarkdownPlugin extends EditPlugin {
 	}
 
 	private static final Pattern IMG_SRC_PATTERN = Pattern.compile("<img\\b[^>]*?\\bsrc\\s*=\\s*\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
+	private static final Pattern A_HREF_PATTERN = Pattern.compile("<a\\b[^>]*?\\bhref\\s*=\\s*\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
 	private static final Pattern URI_SCHEME_PATTERN = Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*:");
 
 	/**
-	 * Finds every distinct <img src="..."> reference in the rendered
-	 * HTML that looks like a relative path rather than an absolute URL
-	 * (http://, data:, etc., which the browser can already resolve on
-	 * its own).
+	 * Finds every distinct <img src="..."> / <a href="..."> reference in
+	 * the rendered HTML that looks like a relative path rather than an
+	 * absolute URL (http://, mailto:, data:, etc., which the browser
+	 * can already resolve on its own) or a same-page anchor (#section).
 	 */
-	private static List<String> findRelativeImages(final String html) {
+	private static List<String> findRelativeResources(final String html) {
 		final Set<String> found = new LinkedHashSet<>();
-		final Matcher matcher = IMG_SRC_PATTERN.matcher(html);
 
-		while (matcher.find()) {
-			final String src = matcher.group(1);
-
-			if (!URI_SCHEME_PATTERN.matcher(src).find()) {
-				found.add(src);
-			}
-		}
+		collectRelativeReferences(html, IMG_SRC_PATTERN, found);
+		collectRelativeReferences(html, A_HREF_PATTERN, found);
 
 		return new ArrayList<>(found);
 	}
 
+	private static void collectRelativeReferences(final String html, final Pattern pattern, final Set<String> found) {
+		final Matcher matcher = pattern.matcher(html);
+
+		while (matcher.find()) {
+			final String ref = matcher.group(1);
+
+			if (!ref.isEmpty() && '#' != ref.charAt(0) && !URI_SCHEME_PATTERN.matcher(ref).find()) {
+				found.add(ref);
+			}
+		}
+	}
+
 	/**
-	 * Copies each relative image reference from the buffer's own VFS
-	 * directory into targetDir, preserving its relative path so the
-	 * <img src="..."> in the already-rendered HTML keeps resolving
-	 * without needing to be rewritten. The preview HTML always lives in
-	 * the OS temp directory rather than next to the source file, so
-	 * this runs for every buffer (local or opened through a VFS like
-	 * sftp://) that references any relative-path image. Failing to
-	 * copy one image is logged and skipped rather than aborting the
-	 * whole preview.
+	 * Strips a trailing #fragment or ?query from a relative reference,
+	 * returning just the file path part to resolve and copy. The
+	 * reference itself is left untouched in the HTML, so the browser
+	 * still applies the fragment/query once the underlying file is
+	 * reachable at that same relative path.
 	 */
-	private void copyRelativeImages(final View view, final Buffer buffer, final List<String> images, final File targetDir) {
+	private static String stripFragmentOrQuery(final String ref) {
+		final int hash = ref.indexOf('#');
+		final int query = ref.indexOf('?');
+		final int cut = -1 == hash ? query : (-1 == query ? hash : Math.min(hash, query));
+
+		return -1 == cut ? ref : ref.substring(0, cut);
+	}
+
+	/**
+	 * Copies each relative resource reference (image or link target)
+	 * from the buffer's own VFS directory into targetDir, preserving
+	 * its relative path so the reference in the already-rendered HTML
+	 * keeps resolving without needing to be rewritten. The preview HTML
+	 * always lives in the OS temp directory rather than next to the
+	 * source file, so this runs for every buffer (local or opened
+	 * through a VFS like sftp://) that references any relative-path
+	 * resource. A link to another Markdown file is copied as-is (not
+	 * rendered), so it opens as plain text rather than a preview.
+	 * Failing to copy one resource is logged and skipped rather than
+	 * aborting the whole preview.
+	 */
+	private void copyRelativeResources(final View view, final Buffer buffer, final List<String> resources, final File targetDir) {
 		final VFS vfs = buffer.getVFS();
 
-		for (final String relPath : images) {
+		for (final String ref : resources) {
+			final String relPath = stripFragmentOrQuery(ref);
+
+			if (relPath.isEmpty()) {
+				continue;
+			}
 			try {
-				final String sourcePath = vfs.constructPath(buffer.getDirectory(), relPath);
 				final File targetFile = new File(targetDir, relPath);
+
+				// relPath may contain "../" segments (e.g. a link to a
+				// file above the buffer's own directory); reject any
+				// that, once resolved, would land outside targetDir
+				// rather than following it wherever it points on the
+				// local filesystem.
+				if (!isWithinDirectory(targetDir, targetFile)) {
+					Log.log(Log.WARNING, MarkdownPlugin.class, "Refusing to copy resource outside the preview directory: " + relPath);
+					continue;
+				}
+
+				final String sourcePath = vfs.constructPath(buffer.getDirectory(), relPath);
 				final File parent = targetFile.getParentFile();
 
 				if (null != parent && !parent.exists() && !parent.mkdirs()) {
@@ -322,12 +362,23 @@ public class MarkdownPlugin extends EditPlugin {
 				if (VFS.copy(null, sourcePath, targetFile.getPath(), view, false)) {
 					targetFile.deleteOnExit();
 				} else {
-					Log.log(Log.WARNING, MarkdownPlugin.class, "Cannot copy image: " + sourcePath);
+					Log.log(Log.WARNING, MarkdownPlugin.class, "Cannot copy resource: " + sourcePath);
 				}
 			} catch (Exception ex) {
-				Log.log(Log.WARNING, MarkdownPlugin.class, "Cannot copy image \"" + relPath + "\": " + ex.getMessage());
+				Log.log(Log.WARNING, MarkdownPlugin.class, "Cannot copy resource \"" + relPath + "\": " + ex.getMessage());
 			}
 		}
+	}
+
+	/**
+	 * Checks, via canonical paths (so "../" segments are resolved),
+	 * that file is dir itself or a descendant of it.
+	 */
+	private static boolean isWithinDirectory(final File dir, final File file) throws IOException {
+		final String dirPath = dir.getCanonicalPath();
+		final String filePath = file.getCanonicalPath();
+
+		return filePath.equals(dirPath) || filePath.startsWith(dirPath + File.separator);
 	}
 
 	private void showPreview(final View view, final Buffer buffer, final String text) {
@@ -344,24 +395,24 @@ public class MarkdownPlugin extends EditPlugin {
 		}
 
 		final String name = buffer.isUntitled() ? "Markdown text" : buffer.getName();
-		final List<String> images = findRelativeImages(text);
+		final List<String> resources = findRelativeResources(text);
 
-		if (images.isEmpty()) {
-			renderAndOpenPreview(view, buffer, browser, text, name, images);
+		if (resources.isEmpty()) {
+			renderAndOpenPreview(view, buffer, browser, text, name, resources);
 		} else {
 			// Copying goes over the VFS (network I/O for sftp:// etc.,
 			// but also plain local file I/O) and must not block the UI
 			// thread.
 			ThreadUtilities.runInBackground(new Runnable() {
 				public void run() {
-					renderAndOpenPreview(view, buffer, browser, text, name, images);
+					renderAndOpenPreview(view, buffer, browser, text, name, resources);
 				}
 			});
 		}
 	}
 
 	private void renderAndOpenPreview(final View view, final Buffer buffer, final InfoViewerPlugin browser,
-			final String text, final String name, final List<String> images) {
+			final String text, final String name, final List<String> resources) {
 		final String html_epilogue = "</body></html>";
 		final String charset = buffer.getStringProperty(buffer.ENCODING);
 		final String css = jEdit.getProperty(OPTION_PREFIX + "preview.css", "");
@@ -373,16 +424,23 @@ public class MarkdownPlugin extends EditPlugin {
 		File html = null;
 
 		try {
-			// Always use the OS temp directory rather than the buffer's
-			// own directory: a VFS URL (sftp:// etc.) can't be used as a
-			// local path anyway, and keeping generated preview files out
-			// of the buffer's own (often version-controlled) directory
-			// is preferable even for local buffers. Any relative-path
-			// images the rendered HTML references are copied alongside
-			// it below so they still resolve.
-			html = File.createTempFile(name, "." + MODE, null);
-			if (!images.isEmpty()) {
-				copyRelativeImages(view, buffer, images, html.getParentFile());
+			// A dedicated, uniquely-named directory per preview (rather
+			// than writing straight into the shared OS temp directory
+			// root): a VFS URL (sftp:// etc.) can't be used as a local
+			// path anyway, and keeping generated preview files out of
+			// the buffer's own (often version-controlled) directory is
+			// preferable even for local buffers. The dedicated directory
+			// also avoids two previews' copied resources colliding when
+			// their Markdown happens to share a relative subpath (e.g.
+			// both referencing "images/foo.png"). Any relative-path
+			// images/links the rendered HTML references are copied
+			// alongside it below so they still resolve.
+			final File previewDir = Files.createTempDirectory("MarkdownPlugin-preview-").toFile();
+
+			previewDir.deleteOnExit();
+			html = File.createTempFile(name, "." + MODE, previewDir);
+			if (!resources.isEmpty()) {
+				copyRelativeResources(view, buffer, resources, html.getParentFile());
 			}
 
 			final Writer writer = new OutputStreamWriter(new FileOutputStream(html), charset);
